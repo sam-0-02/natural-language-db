@@ -2,9 +2,11 @@
   --primary: #6366f1;
   --bg: #0f172a;
   --surface: #1e293b;
+  --sidebar-bg: #111827; /* Darker blue for sidebar */
   --text: #f8fafc;
   --user-bubble: #334155;
   --ai-bubble: #1e293b;
+  --border: rgba(255, 255, 255, 0.1);
 }
 
 body {
@@ -12,24 +14,72 @@ body {
   background-color: var(--bg);
   color: var(--text);
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  overflow: hidden; /* Prevent body scroll, use container scroll */
 }
 
-.chat-container {
+/* 1. The Main Wrapper */
+.dashboard-container {
+  display: flex;
+  height: 100vh;
+  width: 100vw;
+}
+
+/* 2. Sidebar Styles */
+.sidebar {
+  width: 280px;
+  background: var(--sidebar-bg);
+  border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-  height: 90vh;
-  max-width: 900px;
-  margin: 20px auto;
-  background: var(--surface);
-  border-radius: 16px;
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-  overflow: hidden;
+  padding: 24px 16px;
+}
+
+.sidebar-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 20px;
+  padding-left: 10px;
+}
+
+.table-item {
+  padding: 12px 16px;
+  margin-bottom: 6px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  transition: all 0.2s;
+  color: #cbd5e1;
+  background: transparent;
+}
+
+.table-item:hover {
+  background: rgba(99, 102, 241, 0.15);
+  color: var(--primary);
+}
+
+.table-item.active {
+  background: var(--primary);
+  color: white;
+}
+
+/* 3. Main Chat & Content Area */
+.main-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  position: relative;
 }
 
 .chat-header {
-  padding: 20px;
-  background: rgba(255, 255, 255, 0.05);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 20px 32px;
+  background: rgba(255, 255, 255, 0.02);
+  border-bottom: 1px solid var(--border);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -38,17 +88,18 @@ body {
 .messages-area {
   flex: 1;
   overflow-y: auto;
-  padding: 20px;
+  padding: 30px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 20px;
 }
 
+/* Existing Message Bubbles */
 .message {
-  max-width: 85%;
-  padding: 12px 16px;
+  max-width: 80%;
+  padding: 14px 18px;
   border-radius: 12px;
-  line-height: 1.5;
+  line-height: 1.6;
 }
 
 .user-message {
@@ -56,18 +107,22 @@ body {
   background: var(--primary);
   color: white;
   border-bottom-right-radius: 2px;
+  box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3);
 }
 
 .ai-message {
   align-self: flex-start;
   background: var(--user-bubble);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--border);
   border-bottom-left-radius: 2px;
 }
 
+/* 4. Input Area (Fixed at Bottom) */
 .input-area {
-  padding: 20px;
-  background: rgba(0, 0, 0, 0.2);
+  padding: 24px 32px;
+  background: rgba(15, 23, 42, 0.8);
+  backdrop-filter: blur(10px);
+  border-top: 1px solid var(--border);
   display: flex;
   gap: 12px;
 }
@@ -76,30 +131,66 @@ input {
   flex: 1;
   background: #0f172a;
   border: 1px solid #334155;
-  padding: 12px 16px;
+  padding: 14px 18px;
   color: white;
-  border-radius: 8px;
+  border-radius: 10px;
   outline: none;
+  font-size: 15px;
 }
 
-input:focus { border-color: var(--primary); }
+input:focus { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2); }
 
 button {
   background: var(--primary);
   color: white;
   border: none;
-  padding: 10px 20px;
-  border-radius: 8px;
+  padding: 10px 24px;
+  border-radius: 10px;
   cursor: pointer;
   font-weight: 600;
   transition: all 0.2s;
 }
 
-button:hover { opacity: 0.9; transform: translateY(-1px); }
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 
 code {
   background: #000;
-  padding: 2px 6px;
+  padding: 3px 8px;
   border-radius: 4px;
   color: #fbbf24;
+  font-family: 'Fira Code', monospace;
+  font-size: 0.9em;
+}
+
+/* Data Table Styling within Messages */
+.data-table-container {
+  margin-top: 15px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+th {
+  background: rgba(255, 255, 255, 0.05);
+  text-align: left;
+  padding: 12px;
+  color: #94a3b8;
+  text-transform: uppercase;
+  font-size: 12px;
+  letter-spacing: 0.5px;
+}
+
+td {
+  padding: 12px;
+  border-bottom: 1px solid var(--border);
 }

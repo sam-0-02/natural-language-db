@@ -1,44 +1,25 @@
 import sqlite3
 
 def setup_database():
-    # Connect to SQLite (this automatically creates 'company_data.db' in your backend folder)
     conn = sqlite3.connect("company_data.db")
     cursor = conn.cursor()
 
-    # 1. Create a users table (The Schema)
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            age INTEGER NOT NULL,
-            department TEXT NOT NULL,
-            salary INTEGER NOT NULL
-        )
-    ''')
+    # Table 1: Users
+    cursor.execute('''CREATE TABLE IF NOT EXISTS users 
+        (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, age INTEGER, department TEXT, salary INTEGER)''')
 
-    # Clear old data just in case you run this script multiple times
-    cursor.execute('DELETE FROM users')
+    # Table 2: Products (NEW)
+    cursor.execute('''CREATE TABLE IF NOT EXISTS products 
+        (id INTEGER PRIMARY KEY AUTOINCREMENT, product_name TEXT, price REAL, stock INTEGER)''')
 
-    # 2. Prepare some dummy data
-    dummy_employees = [
-        ("Alice", 28, "Engineering", 85000),
-        ("Bob", 35, "Sales", 60000),
-        ("Charlie", 42, "Engineering", 110000),
-        ("Diana", 24, "Marketing", 55000),
-        ("Evan", 31, "HR", 65000)
-    ]
-    
-    # 3. Insert the data into the database
-    cursor.executemany('''
-        INSERT INTO users (name, age, department, salary) 
-        VALUES (?, ?, ?, ?)
-    ''', dummy_employees)
+    # Clear and Add Dummy Products
+    cursor.execute('DELETE FROM products')
+    cursor.executemany('INSERT INTO products (product_name, price, stock) VALUES (?, ?, ?)', 
+        [("Laptop", 1200.0, 10), ("Mouse", 25.0, 50), ("Monitor", 300.0, 15)])
 
-    # Save changes and close the connection
     conn.commit()
     conn.close()
-    
-    print("✅ Database 'company_data.db' created and populated successfully!")
+    print("✅ Multi-table database ready!")
 
 if __name__ == "__main__":
     setup_database()

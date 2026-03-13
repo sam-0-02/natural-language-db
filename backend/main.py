@@ -110,25 +110,43 @@ def analyze_query(query: str):
         return {"is_safe": False, "type": "DELETE"}
     else:
         return {"is_safe": False, "type": "UNKNOWN"}
+    
+
+def get_dynamic_schema():
+    conn = sqlite3.connect("company_data.db")
+    cursor = conn.cursor()
+    
+    # Get all table names
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%';")
+    tables = [row[0] for row in cursor.fetchall()]
+    
+    schema_text = ""
+    for table in tables:
+        cursor.execute(f"PRAGMA table_info({table})")
+        columns = cursor.fetchall()
+        column_names = [f"{col[1]} ({col[2]})" for col in columns]
+        schema_text += f"Table: {table}\nColumns: {', '.join(column_names)}\n\n"
+    
+    conn.close()
+    return schema_text
+
 
 @app.post("/generate-query")
 async def generate_query(request: QueryRequest):
     try:
+        schema_info = get_dynamic_schema()
         # 1. Generate the SQL Query
         system_prompt = f"""
         You are an expert SQLite database assistant. 
         Convert the user's natural language request into a valid SQLite query.
         
-        Here is the database schema you MUST use:
-        {DB_SCHEMA}
+        Here is the dynamic database schema you MUST use:
+        {schema_info}
         
-        Return ONLY the SQL code. Do not include markdown formatting like ```sql.
-        Do not include any explanations.
-        
-        CRITICAL RULE: SQLite text comparisons are case-sensitive. You MUST wrap all text column checks in LOWER(). 
-        Example: Instead of WHERE name = 'BOB', you MUST write WHERE LOWER(name) = LOWER('BOB').
+        Return ONLY the SQL code. No markdown, no explanations.
+        IMPORTANT: Use LOWER() for all text comparisons to stay case-insensitive.
+        If the user asks to create a table, generate a valid 'CREATE TABLE' statement.
         """
-
         response = client.chat.completions.create(
             model="local-model", 
             messages=[
@@ -191,7 +209,22 @@ async def generate_query(request: QueryRequest):
     except Exception as e:
         print(f"Error in generate_query: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-    
+
+
+@app.get("/list-tables")
+async def list_tables():
+    try:
+        conn = sqlite3.connect("company_data.db")
+        cursor = conn.cursor()
+        # Fetch names of all tables you created
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%';")
+        tables = [row[0] for row in cursor.fetchall()]
+        conn.close()
+        return {"tables": tables}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # Create a new structure for confirmed queries
 class ExecuteRequest(BaseModel):
     sql_query: str
