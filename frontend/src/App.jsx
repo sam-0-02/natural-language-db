@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import axios from 'axios'
 import { 
+  X,
   Database, 
   UploadCloud, 
   Download, 
@@ -17,6 +18,7 @@ import {
 } from 'lucide-react'
 import DynamicChart from './DynamicChart'
 import './App.css'
+import './index.css'
 
 function App() {
   const [input, setInput] = useState('')
@@ -196,12 +198,13 @@ function App() {
     }
   };
 
+
 return (
   <div className="dashboard-container">
     {/* 1. LEFT SIDEBAR */}
     <div className="sidebar">
       <div className="sidebar-brand">
-        <Database size={20} color="#60a5fa" />
+        <Database size={20} color="#ffffff" />
         <span>DataQuery Pro</span>
       </div>
       
@@ -342,9 +345,23 @@ return (
         {currentData && (
           <div className="data-preview-panel">
             <div className="panel-header">
-              <div className="tab active">Results Preview</div>
-              <div className="sql-reference">{currentData.sql}</div>
+              {/* GROUPED TAB AND SQL REFERENCE */}
+              <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
+                <div className="tab active">Results Preview</div>
+                <div className="sql-reference" style={{ opacity: 0.5 }}>{currentData.sql}</div>
+              </div>
+              
+              {/* NEW CLOSE BUTTON */}
+              <button 
+                className="close-panel-btn" 
+                onClick={() => setCurrentData(null)}
+                title="Close Preview"
+                style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+              >
+                <X size={18} />
+              </button>
             </div>
+            
             <div className="panel-body">
               {currentData.wantsChart ? (
                 <div style={{ height: '100%', minHeight: '250px' }}>

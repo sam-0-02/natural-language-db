@@ -46,6 +46,7 @@ The system uses a **Dynamic Schema Injection** pattern. When a user asks a quest
   - *Windows:* `choco install ffmpeg` or download from ffmpeg.org
   - *Mac:* `brew install ffmpeg`
   - *Linux:* `sudo apt install ffmpeg`
+  
 ### Backend Setup
 1. `cd backend`
 2. `python -m venv .venv`
