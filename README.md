@@ -42,7 +42,10 @@ The system uses a **Dynamic Schema Injection** pattern. When a user asks a quest
 - Python 3.9+
 - Node.js & npm
 - LM Studio (running a local server at `localhost:1234`)
-
+- **FFmpeg**: Required for audio processing.
+  - *Windows:* `choco install ffmpeg` or download from ffmpeg.org
+  - *Mac:* `brew install ffmpeg`
+  - *Linux:* `sudo apt install ffmpeg`
 ### Backend Setup
 1. `cd backend`
 2. `python -m venv .venv`
