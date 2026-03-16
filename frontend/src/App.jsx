@@ -1,6 +1,22 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import axios from 'axios'
+import { 
+  Database, 
+  UploadCloud, 
+  Download, 
+  Trash2, 
+  Globe, 
+  History, 
+  Mic, 
+  Send, 
+  Square,
+  AlertCircle,
+  ChevronRight,
+  FileText,
+  Loader2
+} from 'lucide-react'
 import DynamicChart from './DynamicChart'
+import './App.css'
 
 function App() {
   const [input, setInput] = useState('')
@@ -9,11 +25,24 @@ function App() {
   const [tables, setTables] = useState([])
   const [isRecording, setIsRecording] = useState(false)
   const [mediaRecorder, setMediaRecorder] = useState(null)
-  const [globalSearch, setGlobalSearch] = useState('')
+  
+  // New States for Professional UI
+  const [activeTable, setActiveTable] = useState(null)
+  const [currentData, setCurrentData] = useState(null) // Holds the latest table/chart to display below
+  const [showHistory, setShowHistory] = useState(false)
+  const [auditLog, setAuditLog] = useState([])
+  
+  const messagesEndRef = useRef(null)
 
-  // 1. Fetch tables from backend on mount
+  // Auto-scroll chat to bottom
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
+
+  // Initial Fetches
   useEffect(() => {
     fetchTableList();
+    fetchAuditHistory();
   }, []);
 
   const fetchTableList = async () => {
@@ -25,17 +54,50 @@ function App() {
     }
   };
 
+  const fetchAuditHistory = async () => {
+    try {
+      const res = await axios.get('http://localhost:8000/audit-history');
+      setAuditLog(res.data.history);
+    } catch (err) {
+      console.error("Could not fetch history", err);
+    }
+  };
+
+  const handleFileUpload = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+    if (file.type !== 'text/csv' && !file.name.endsWith('.csv')) {
+      alert('Please upload a valid CSV file.');
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', file);
+    setLoading(true);
+    try {
+      const res = await axios.post('http://localhost:8000/upload-csv', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      fetchTableList();
+      fetchAuditHistory();
+      setMessages(prev => [...prev, { role: 'system', successMsg: `✅ ${res.data.message}` }]);
+    } catch (err) {
+      setMessages(prev => [...prev, { role: 'system', error: 'Failed to upload CSV.' }]);
+    } finally {
+      setLoading(false);
+      event.target.value = null; 
+    }
+  };
+
   const handleDeleteTable = async (tableName) => {
-    const confirmed = window.confirm(`Are you sure you want to PERMANENTLY delete the table "${tableName}"?`);
-    if (confirmed) {
+    if (window.confirm(`Permanently delete the table "${tableName}"?`)) {
       try {
         setLoading(true);
         await axios.delete(`http://localhost:8000/delete-table/${tableName}`);
         fetchTableList();
-        setMessages(prev => [...prev, { 
-          role: 'system', 
-          successMsg: `Table "${tableName}" has been removed.` 
-        }]);
+        fetchAuditHistory();
+        if (activeTable === tableName) setActiveTable(null);
+        setMessages(prev => [...prev, { role: 'system', successMsg: `Table "${tableName}" removed.` }]);
       } catch (err) {
         alert("Failed to delete table.");
       } finally {
@@ -44,12 +106,14 @@ function App() {
     }
   };
 
-  // 2. Updated Search Logic with Chat History (Memory)
+  const handleDownloadTable = (tableName, format = 'csv') => {
+    window.open(`http://localhost:8000/download-table/${tableName}?format=${format}`, '_blank');
+  };
+
   const performSearch = async (queryText) => {
     if (!queryText.trim()) return;
     const wantsChart = /chart|graph|plot/i.test(queryText);
     
-    // Construct history for the AI (last 6 messages for context)
     const history = messages.slice(-6).map(m => ({
         role: m.role === 'user' ? 'user' : 'assistant',
         content: m.content || m.data?.summary || "Data retrieved."
@@ -61,17 +125,20 @@ function App() {
     try {
       const response = await axios.post('http://localhost:8000/generate-query', {
         user_prompt: queryText,
-        history: history // NEW: Sending the context to the backend
+        history: history,
+        target_table: activeTable
       });
 
-      setMessages((prev) => [...prev, { 
-        role: 'system', 
-        data: response.data,
-        wantsChart: wantsChart 
-      }]);
+      const aiData = response.data;
+      setMessages((prev) => [...prev, { role: 'system', data: aiData }]);
       
-      if (queryText.toLowerCase().includes("create table")) {
-        fetchTableList();
+      // If we got actual data back, push it to the Bottom Grid Panel
+      if (aiData.data && Array.isArray(aiData.data) && aiData.data.length > 0) {
+        setCurrentData({ rows: aiData.data, wantsChart: wantsChart, sql: aiData.generated_sql });
+      }
+
+      if (['requires_confirmation', 'executed'].includes(aiData.status) && !queryText.toLowerCase().includes('select')) {
+         setTimeout(() => { fetchTableList(); fetchAuditHistory(); }, 1000);
       }
     } catch (error) {
       setMessages((prev) => [...prev, { role: 'system', error: 'Server connection failed.' }]);
@@ -80,10 +147,23 @@ function App() {
     }
   };
 
-  // 3. Voice Logic
+  const confirmExecution = async (sqlQuery) => {
+    setLoading(true);
+    try {
+      await axios.post('http://localhost:8000/execute-confirmed-query', { sql_query: sqlQuery });
+      setMessages((prev) => [...prev, { role: 'system', successMsg: "Update executed successfully!" }]);
+      fetchTableList();
+      fetchAuditHistory();
+    } catch (err) {
+      setMessages((prev) => [...prev, { role: 'system', error: 'Execution failed.' }]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const toggleRecording = async () => {
-    if (isRecording) {
-      if (mediaRecorder) mediaRecorder.stop();
+    if (isRecording && mediaRecorder) {
+      mediaRecorder.stop();
       return;
     }
     try {
@@ -101,11 +181,11 @@ function App() {
           setInput(res.data.transcription);
           await performSearch(res.data.transcription);
         } catch (err) {
-          console.error("Transcription error", err);
+          console.error(err);
         } finally {
           setLoading(false);
           setIsRecording(false);
-          stream.getTracks().forEach(track => track.stop());
+          stream.getTracks().forEach(t => t.stop());
         }
       };
       recorder.start();
@@ -116,143 +196,202 @@ function App() {
     }
   };
 
-  const handleFormSubmit = (e) => {
-    e.preventDefault();
-    performSearch(input);
-    setInput('');
-  };
+return (
+  <div className="dashboard-container">
+    {/* 1. LEFT SIDEBAR */}
+    <div className="sidebar">
+      <div className="sidebar-brand">
+        <Database size={20} color="#60a5fa" />
+        <span>DataQuery Pro</span>
+      </div>
+      
+      <div className="upload-section">
+        <label className="upload-button">
+          <UploadCloud size={16} />
+          <span>Import CSV</span>
+          <input type="file" accept=".csv" onChange={handleFileUpload} style={{ display: 'none' }} />
+        </label>
+      </div>
 
-  const confirmExecution = async (sqlQuery) => {
-    setLoading(true);
-    try {
-      await axios.post('http://localhost:8000/execute-confirmed-query', { sql_query: sqlQuery });
-      setMessages((prev) => [...prev, { role: 'system', successMsg: "Query executed successfully!" }]);
-      fetchTableList();
-    } catch (err) {
-      setMessages((prev) => [...prev, { role: 'system', error: 'Execution failed.' }]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="dashboard-container">
-      {/* SIDEBAR */}
-      <div className="sidebar">
-        <div className="sidebar-title">Database Explorer</div>
-        
-        <div style={{ padding: '0 8px 20px 8px' }}>
-          <div style={{ position: 'relative' }}>
-            <input 
-              type="text" 
-              placeholder="Global Search..." 
-              value={globalSearch}
-              onChange={(e) => setGlobalSearch(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  performSearch(`Search all tables for '${globalSearch}'`);
-                  setGlobalSearch('');
-                }
-              }}
-              style={{ 
-                width: '100%',
-                padding: '10px 12px',
-                fontSize: '13px',
-                background: 'rgba(0,0,0,0.3)',
-                border: '1px solid rgba(255,255,255,0.1)',
-                borderRadius: '6px',
-                color: 'white',
-                outline: 'none'
-              }}
-            />
-          </div>
-        </div>
-
-        <div className="sidebar-title" style={{ fontSize: '11px', marginTop: '10px' }}>Your Tables</div>
-
+      <div className="sidebar-label">Registered Tables</div>
+      <div className="table-list">
         {tables.map((table) => (
-          <div key={table} className="table-item" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px' }}>
-            <span onClick={() => performSearch(`Show all data from ${table}`)} style={{ flex: 1, cursor: 'pointer' }}>
-              📁 {table}
-            </span>
-            <button 
-              onClick={(e) => { e.stopPropagation(); handleDeleteTable(table); }}
-              className="delete-btn"
-              style={{ background: 'transparent', color: '#f87171', border: 'none', cursor: 'pointer', opacity: 0.6 }}
-              onMouseEnter={(e) => e.target.style.opacity = 1}
-              onMouseLeave={(e) => e.target.style.opacity = 0.6}
-            >
-              🗑️
-            </button>
+          <div 
+            key={table} 
+            className={`table-item ${activeTable === table ? 'active' : ''}`}
+            onClick={() => setActiveTable(table)}
+          >
+            <div className="table-info">
+              <FileText size={14} className="table-icon" />
+              <span>{table}</span>
+            </div>
+            <div className="table-actions">
+              <Download 
+                size={14} 
+                className="action-icon download" 
+                onClick={(e) => { e.stopPropagation(); handleDownloadTable(table); }} 
+              />
+              <Trash2 
+                size={14} 
+                className="action-icon delete" 
+                onClick={(e) => { e.stopPropagation(); handleDeleteTable(table); }} 
+              />
+            </div>
           </div>
         ))}
       </div>
+    </div>
 
-      {/* MAIN CONTENT */}
-      <div className="main-content">
-        <div className="chat-header">
-          <h2 style={{ margin: 0 }}>AI Data Manager</h2>
-          <span style={{ fontSize: '12px', color: '#94a3b8' }}>Mode: Relational Memory</span>
+    {/* 2. MAIN CONSOLE */}
+    <div className="main-content">
+      <header className="main-header">
+        <div className="header-context">
+          <div className={`status-indicator ${activeTable ? 'table-mode' : 'global-mode'}`} />
+          <div>
+            <h1>Analytics Console</h1>
+            <p>{activeTable ? `Isolated Scope: ${activeTable}` : 'Global Database Scope'}</p>
+          </div>
+        </div>
+        <div className="header-actions">
+          {activeTable && (
+            <button className="ghost-btn" onClick={() => setActiveTable(null)}>
+              <Globe size={14} /> Global View
+            </button>
+          )}
+          <button className={`ghost-btn ${showHistory ? 'active' : ''}`} onClick={() => setShowHistory(!showHistory)}>
+            <History size={14} /> {showHistory ? 'Hide Logs' : 'Audit Logs'}
+          </button>
+        </div>
+      </header>
+
+      <div className="workspace-split">
+        <div className="chat-container">
+          <div className="messages-area">
+            {messages.length === 0 && (
+              <div style={{ margin: 'auto', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                <Database size={40} style={{ marginBottom: '10px', opacity: 0.2 }} />
+                <p>Welcome. Import a CSV or ask a question to begin.</p>
+              </div>
+            )}
+
+            {messages.map((msg, i) => (
+              <div key={i} className={`message-wrapper ${msg.role}`}>
+                <div className="message-bubble">
+                  {msg.content && <p>{msg.content}</p>}
+                  
+                  {msg.data && (
+                    <div className="ai-response-meta">
+                      {msg.data.summary && <p className="summary">{msg.data.summary}</p>}
+                      
+                      <div className="sql-box">
+                        <code>{msg.data.generated_sql}</code>
+                      </div>
+
+                      {/* CONFIRMATION BOX FOR DESTRUCTIVE QUERIES */}
+                      {msg.data.status === 'requires_confirmation' && (
+                        <div className="confirmation-box">
+                          <p style={{ color: '#f87171', margin: '0 0 8px 0', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <AlertCircle size={14} /> 
+                            {msg.data.warning}
+                          </p>
+                          <button 
+                            className="confirm-btn"
+                            onClick={() => confirmExecution(msg.data.generated_sql)}
+                          >
+                            Confirm and Execute
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {msg.successMsg && <div style={{ color: 'var(--success)', fontSize: '13px', marginTop: '5px' }}>✓ {msg.successMsg}</div>}
+                  {msg.error && <div className="error-alert" style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--error)', marginTop: '5px' }}><AlertCircle size={14}/> {msg.error}</div>}
+                </div>
+              </div>
+            ))}
+
+            {/* PROCESSING / LOADING INDICATOR */}
+            {loading && (
+              <div className="message-wrapper system">
+                <div className="processing-indicator">
+                  <Loader2 className="spinner" size={18} />
+                  <span>AI is analyzing the database...</span>
+                </div>
+              </div>
+            )}
+            <div ref={messagesEndRef} />
+          </div>
+
+          <form className="input-bar" onSubmit={(e) => { e.preventDefault(); performSearch(input); setInput(''); }}>
+            <button type="button" className={`icon-btn ${isRecording ? 'recording' : ''}`} onClick={toggleRecording}>
+              {isRecording ? <Square size={18} fill="#ef4444" /> : <Mic size={18} />}
+            </button>
+            <input 
+              type="text" 
+              value={input} 
+              onChange={(e) => setInput(e.target.value)}
+              placeholder={activeTable ? `Query ${activeTable}...` : "Ask about your data..."} 
+            />
+            <button type="submit" className="send-btn" disabled={!input.trim() || loading}>
+              <Send size={18} />
+            </button>
+          </form>
         </div>
 
-        <div className="messages-area">
-          {messages.map((msg, index) => (
-            <div key={index} className={`message ${msg.role === 'user' ? 'user-message' : 'ai-message'}`}>
-              {msg.content && <div>{msg.content}</div>}
-              {msg.error && <div style={{ color: '#f87171' }}>❌ {msg.error}</div>}
-              {msg.successMsg && <div style={{ color: '#4ade80' }}>✅ {msg.successMsg}</div>}
-
-              {msg.data && (
-                <div style={{ marginTop: '10px' }}>
-                  {msg.data.summary && <p style={{ color: '#e2e8f0', fontWeight: '500' }}>{msg.data.summary}</p>}
-                  <div style={{ fontSize: '11px', opacity: 0.6, marginBottom: '10px' }}>
-                    SQL: <code>{msg.data.generated_sql || msg.data.executed_sql}</code>
-                  </div>
-
-                  {msg.data.status === 'requires_confirmation' && (
-                    <div style={{ background: 'rgba(248, 113, 113, 0.1)', padding: '12px', borderRadius: '8px', border: '1px solid #f87171' }}>
-                      <p style={{ color: '#f87171', margin: '0 0 10px 0' }}>{msg.data.warning}</p>
-                      <button onClick={() => confirmExecution(msg.data.generated_sql)}>Confirm Execute</button>
-                    </div>
-                  )}
-
-                  {msg.data.data && msg.data.data.length > 0 && (
-                    <div className="data-table-container">
-                      {msg.wantsChart && <DynamicChart data={msg.data.data} />}
-                      <table>
-                        <thead>
-                          <tr>{Object.keys(msg.data.data[0]).map(key => <th key={key}>{key}</th>)}</tr>
-                        </thead>
-                        <tbody>
-                          {msg.data.data.map((row, i) => (
-                            <tr key={i}>{Object.values(row).map((val, j) => <td key={j}>{val}</td>)}</tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
+        {currentData && (
+          <div className="data-preview-panel">
+            <div className="panel-header">
+              <div className="tab active">Results Preview</div>
+              <div className="sql-reference">{currentData.sql}</div>
+            </div>
+            <div className="panel-body">
+              {currentData.wantsChart ? (
+                <div style={{ height: '100%', minHeight: '250px' }}>
+                  <DynamicChart data={currentData.rows} />
+                </div>
+              ) : (
+                <div className="table-responsive">
+                  <table>
+                    <thead>
+                      <tr>{Object.keys(currentData.rows[0]).map(k => <th key={k}>{k}</th>)}</tr>
+                    </thead>
+                    <tbody>
+                      {currentData.rows.map((row, i) => (
+                        <tr key={i}>{Object.values(row).map((v, j) => <td key={j}>{v}</td>)}</tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               )}
             </div>
-          ))}
-          {loading && <div className="message ai-message"><em>Processing...</em></div>}
-        </div>
-
-        <form onSubmit={handleFormSubmit} className="input-area">
-          <input 
-            type="text" 
-            value={input} 
-            onChange={(e) => setInput(e.target.value)} 
-            placeholder="Query your database..." 
-          />
-          <button type="button" onClick={toggleRecording} style={{ background: isRecording ? '#ef4444' : '#334155', minWidth: '80px' }}>
-            {isRecording ? 'Stop' : '🎤 Mic'}
-          </button>
-          <button type="submit" disabled={loading || isRecording}>Send</button>
-        </form>
+          </div>
+        )}
       </div>
     </div>
-  );
+
+    {/* 3. AUDIT LOG DRAWER */}
+    {showHistory && (
+      <aside className="audit-drawer">
+        <div className="drawer-header">Transaction History</div>
+        <div className="log-list">
+          {auditLog.length === 0 ? (
+            <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '12px' }}>No logs recorded yet.</div>
+          ) : (
+            auditLog.map((log) => (
+              <div key={log.id} className="log-entry">
+                <div className="log-tag">{log.action_type}</div>
+                <div className="log-table">Table: {log.table_affected}</div>
+                <div className="log-sql">{log.query_executed}</div>
+                <div className="log-time">{new Date(log.timestamp).toLocaleString()}</div>
+              </div>
+            ))
+          )}
+        </div>
+      </aside>
+    )}
+  </div>
+);
 }
 
 export default App;

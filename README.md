@@ -1,33 +1,59 @@
-# Natural Language Database Agent 🤖📊
+# DataQuery Pro: Local AI SQL Agent
 
-A full-stack AI agent that allows users to query a database using natural language or voice. It generates SQL, executes it securely, and visualizes the results.
+DataQuery Pro is a professional, local-first data analytics platform that allows users to interact with their databases using natural language. By combining **FastAPI**, **React**, and **Local LLMs (via LM Studio)**, this tool provides a secure, private, and intuitive way to analyze data without writing a single line of SQL.
 
-## 🚀 Features
-- **Text-to-SQL:** Uses local LLMs (via LM Studio) to convert English into SQLite queries.
-- **Voice Interface:** Integrated OpenAI Whisper for local speech-to-text transcription.
-- **Data Visualization:** Automatically generates bar charts using Recharts.
-- **Security Shield:** Detects and requires confirmation for destructive operations (UPDATE/DELETE).
-- **Local-First:** All processing (LLM, STT, Database) happens on your machine.
+## 🚀 Key Features
 
-## 🛠️ Tech Stack
-- **Frontend:** React, Vite, Axios, Recharts, Lucide Icons.
-- **Backend:** FastAPI, Python, SQLite, OpenAI Whisper.
-- **AI Engine:** LM Studio (Local Inference).
+* **Dual-Scope Intelligence:** Switch between a "Global Chat" for relational joins across multiple tables and a "Table-Specific" chat for deep-dives into single datasets.
+* **Dynamic CSV Ingestion:** Drag-and-drop CSV files to instantly convert them into queryable SQLite tables.
+* **Natural Language to SQL:** Powered by local LLMs, translating complex human questions into precise SQLite queries.
+* **Integrated Data Visualization:** Automatic generation of charts and graphs for trend analysis.
+* **Audit Logging:** A persistent transaction history that tracks every structural change (INSERT, UPDATE, DELETE, DROP) for security and transparency.
+* **Voice-Activated Queries:** Built-in speech-to-text using OpenAI Whisper for hands-free data exploration.
+* **Privacy First:** 100% local execution. No data leaves your machine.
 
-## 📋 Prerequisites
-- Python 3.10+
+## 🛠️ Technical Stack
+
+### Frontend
+- **React (Vite)**
+- **Lucide React** (Professional Iconography)
+- **Recharts** (Dynamic Visualization)
+- **Axios** (API Communication)
+
+### Backend
+- **FastAPI** (Python High-Performance Web Framework)
+- **Pandas** (Data Processing & CSV Management)
+- **SQLite** (Relational Storage)
+- **OpenAI Whisper** (Local Audio Transcription)
+
+### AI Inference
+- **LM Studio** (Local OpenAI-compatible API)
+- **Model:** GGUF Quantized Models (Llama 3 / Mistral)
+
+## 🏗️ Architecture
+
+
+
+The system uses a **Dynamic Schema Injection** pattern. When a user asks a question, the backend inspects the current SQLite schema, injects the column definitions into the LLM system prompt, and executes the returned SQL safely via a security middleware layer.
+
+## 🚦 Getting Started
+
+### Prerequisites
+- Python 3.9+
 - Node.js & npm
-- FFmpeg (for voice processing)
-- LM Studio (running a local model)
+- LM Studio (running a local server at `localhost:1234`)
 
-## 🔧 Setup
-1. **Backend:**
-   - `cd backend`
-   - `pip install -r requirements.txt`
-   - `python init_db.py` (to create dummy data)
-   - `uvicorn main:app --reload`
+### Backend Setup
+1. `cd backend`
+2. `python -m venv .venv`
+3. `source .venv/bin/activate` (or `.venv\Scripts\activate` on Windows)
+4. `pip install -r requirements.txt`
+5. `uvicorn main:app --reload`
 
-2. **Frontend:**
-   - `cd frontend`
-   - `npm install`
-   - `npm run dev`
+### Frontend Setup
+1. `cd frontend`
+2. `npm install`
+3. `npm run dev`
+
+## 🛡️ Security
+The application includes an **AI Safety Shield** that intercepts destructive SQL commands. Destructive actions like `DROP TABLE` or `DELETE` require explicit user confirmation via the UI before execution.
