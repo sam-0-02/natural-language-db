@@ -9,6 +9,7 @@ function App() {
   const [tables, setTables] = useState([])
   const [isRecording, setIsRecording] = useState(false)
   const [mediaRecorder, setMediaRecorder] = useState(null)
+  const [globalSearch, setGlobalSearch] = useState('')
 
   // 1. Fetch tables from backend on mount
   useEffect(() => {
@@ -24,17 +25,43 @@ function App() {
     }
   };
 
-  // 2. Shared Search Logic
+  const handleDeleteTable = async (tableName) => {
+    const confirmed = window.confirm(`Are you sure you want to PERMANENTLY delete the table "${tableName}"?`);
+    if (confirmed) {
+      try {
+        setLoading(true);
+        await axios.delete(`http://localhost:8000/delete-table/${tableName}`);
+        fetchTableList();
+        setMessages(prev => [...prev, { 
+          role: 'system', 
+          successMsg: `Table "${tableName}" has been removed.` 
+        }]);
+      } catch (err) {
+        alert("Failed to delete table.");
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
+
+  // 2. Updated Search Logic with Chat History (Memory)
   const performSearch = async (queryText) => {
     if (!queryText.trim()) return;
     const wantsChart = /chart|graph|plot/i.test(queryText);
     
+    // Construct history for the AI (last 6 messages for context)
+    const history = messages.slice(-6).map(m => ({
+        role: m.role === 'user' ? 'user' : 'assistant',
+        content: m.content || m.data?.summary || "Data retrieved."
+    }));
+
     setMessages((prev) => [...prev, { role: 'user', content: queryText }]);
     setLoading(true);
-
+    
     try {
       const response = await axios.post('http://localhost:8000/generate-query', {
-        user_prompt: queryText
+        user_prompt: queryText,
+        history: history // NEW: Sending the context to the backend
       });
 
       setMessages((prev) => [...prev, { 
@@ -43,7 +70,6 @@ function App() {
         wantsChart: wantsChart 
       }]);
       
-      // If a new table was created, refresh the sidebar
       if (queryText.toLowerCase().includes("create table")) {
         fetchTableList();
       }
@@ -60,7 +86,6 @@ function App() {
       if (mediaRecorder) mediaRecorder.stop();
       return;
     }
-
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const recorder = new MediaRecorder(stream);
@@ -102,7 +127,7 @@ function App() {
     try {
       await axios.post('http://localhost:8000/execute-confirmed-query', { sql_query: sqlQuery });
       setMessages((prev) => [...prev, { role: 'system', successMsg: "Query executed successfully!" }]);
-      fetchTableList(); // Refresh sidebar in case table was deleted/created
+      fetchTableList();
     } catch (err) {
       setMessages((prev) => [...prev, { role: 'system', error: 'Execution failed.' }]);
     } finally {
@@ -115,13 +140,50 @@ function App() {
       {/* SIDEBAR */}
       <div className="sidebar">
         <div className="sidebar-title">Database Explorer</div>
+        
+        <div style={{ padding: '0 8px 20px 8px' }}>
+          <div style={{ position: 'relative' }}>
+            <input 
+              type="text" 
+              placeholder="Global Search..." 
+              value={globalSearch}
+              onChange={(e) => setGlobalSearch(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  performSearch(`Search all tables for '${globalSearch}'`);
+                  setGlobalSearch('');
+                }
+              }}
+              style={{ 
+                width: '100%',
+                padding: '10px 12px',
+                fontSize: '13px',
+                background: 'rgba(0,0,0,0.3)',
+                border: '1px solid rgba(255,255,255,0.1)',
+                borderRadius: '6px',
+                color: 'white',
+                outline: 'none'
+              }}
+            />
+          </div>
+        </div>
+
+        <div className="sidebar-title" style={{ fontSize: '11px', marginTop: '10px' }}>Your Tables</div>
+
         {tables.map((table) => (
-          <div 
-            key={table} 
-            className="table-item" 
-            onClick={() => performSearch(`Show all data from ${table}`)}
-          >
-            📂 {table}
+          <div key={table} className="table-item" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px' }}>
+            <span onClick={() => performSearch(`Show all data from ${table}`)} style={{ flex: 1, cursor: 'pointer' }}>
+              📁 {table}
+            </span>
+            <button 
+              onClick={(e) => { e.stopPropagation(); handleDeleteTable(table); }}
+              className="delete-btn"
+              style={{ background: 'transparent', color: '#f87171', border: 'none', cursor: 'pointer', opacity: 0.6 }}
+              onMouseEnter={(e) => e.target.style.opacity = 1}
+              onMouseLeave={(e) => e.target.style.opacity = 0.6}
+            >
+              🗑️
+            </button>
           </div>
         ))}
       </div>
@@ -130,7 +192,7 @@ function App() {
       <div className="main-content">
         <div className="chat-header">
           <h2 style={{ margin: 0 }}>AI Data Manager</h2>
-          <span style={{ fontSize: '12px', color: '#94a3b8' }}>Local Model Connected</span>
+          <span style={{ fontSize: '12px', color: '#94a3b8' }}>Mode: Relational Memory</span>
         </div>
 
         <div className="messages-area">
@@ -143,7 +205,6 @@ function App() {
               {msg.data && (
                 <div style={{ marginTop: '10px' }}>
                   {msg.data.summary && <p style={{ color: '#e2e8f0', fontWeight: '500' }}>{msg.data.summary}</p>}
-                  
                   <div style={{ fontSize: '11px', opacity: 0.6, marginBottom: '10px' }}>
                     SQL: <code>{msg.data.generated_sql || msg.data.executed_sql}</code>
                   </div>
@@ -160,15 +221,11 @@ function App() {
                       {msg.wantsChart && <DynamicChart data={msg.data.data} />}
                       <table>
                         <thead>
-                          <tr>
-                            {Object.keys(msg.data.data[0]).map(key => <th key={key}>{key}</th>)}
-                          </tr>
+                          <tr>{Object.keys(msg.data.data[0]).map(key => <th key={key}>{key}</th>)}</tr>
                         </thead>
                         <tbody>
                           {msg.data.data.map((row, i) => (
-                            <tr key={i}>
-                              {Object.values(row).map((val, j) => <td key={j}>{val}</td>)}
-                            </tr>
+                            <tr key={i}>{Object.values(row).map((val, j) => <td key={j}>{val}</td>)}</tr>
                           ))}
                         </tbody>
                       </table>
@@ -186,13 +243,9 @@ function App() {
             type="text" 
             value={input} 
             onChange={(e) => setInput(e.target.value)} 
-            placeholder="Query your tables or type 'Create table...'" 
+            placeholder="Query your database..." 
           />
-          <button 
-            type="button" 
-            onClick={toggleRecording} 
-            style={{ background: isRecording ? '#ef4444' : '#334155', minWidth: '80px' }}
-          >
+          <button type="button" onClick={toggleRecording} style={{ background: isRecording ? '#ef4444' : '#334155', minWidth: '80px' }}>
             {isRecording ? 'Stop' : '🎤 Mic'}
           </button>
           <button type="submit" disabled={loading || isRecording}>Send</button>
